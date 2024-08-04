@@ -139,10 +139,13 @@ app.get("/getPosts", async (req, res) => {
   }
 
   try {
-    const posts = await Post.find({ user: userId }).populate(
-      "user",
-      "username profilePhoto"
-    );
+    const posts = await Post.find({ user: userId })
+      .populate("user", "username profilePhoto")
+      .populate({
+        path: "comments.user",
+        select: "username profilePhoto",
+      });
+
     res.json({ message: "Successfull", success: true, data: posts });
   } catch (err) {
     console.error("Error fetching posts:", err);
@@ -177,7 +180,6 @@ app.post("/posts/:id/like", async (req, res) => {
   try {
     const postId = req.params.id;
     const userId = req.body.userId;
-    console.log(postId, userId);
     const post = await Post.findById(postId);
 
     if (!post) {
@@ -199,6 +201,62 @@ app.post("/posts/:id/like", async (req, res) => {
     res.status(200).json(post);
   } catch (err) {
     res.status(500).json(err);
+  }
+});
+app.post("/comment/:id", async (req, res) => {
+  try {
+    const postID = req.params.id;
+    const { userId, text } = req.body;
+
+    if (!userId || !text) {
+      return res
+        .status(400)
+        .json({ error: "User ID and comment text are required" });
+    }
+
+    const post = await Post.findById(postID);
+
+    if (!post) {
+      return res.status(404).json({ error: "Post does not exist" });
+    }
+
+    const user = await User.findById(userId).select("username profilePhoto");
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const newComment = {
+      user: userId,
+      text: text,
+    };
+
+    post.comments.push(newComment);
+    await post.save();
+
+    await post.populate({
+      path: "comments.user",
+      select: "username profilePhoto",
+    });
+
+    const addedComment = post.comments[post.comments.length - 1];
+
+    res.status(201).json({
+      message: "Comment added successfully",
+      comment: {
+        _id: addedComment._id,
+        user: {
+          _id: addedComment.user._id,
+          username: addedComment.user.username,
+          profilePhoto: addedComment.user.profilePhoto,
+        },
+        text: addedComment.text,
+        createdAt: addedComment.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
